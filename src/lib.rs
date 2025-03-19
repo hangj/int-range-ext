@@ -1,7 +1,7 @@
 use core::ops::{Add, Bound, RangeBounds, RangeInclusive, Sub};
 
 
-trait Utils where Self: Copy + PartialOrd + Ord + Add<Output = Self> + Sub<Output = Self> {
+pub trait Utils where Self: Copy + PartialOrd + Ord + Add<Output = Self> + Sub<Output = Self> {
     fn zero() -> Self;
     fn one() -> Self;
     fn max_() -> Self;
@@ -24,8 +24,9 @@ macro_rules! impl_one {
 impl_one!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
 
-trait IntRangeHelper<T> {
+pub trait IntRangeHelper<T: Utils> {
     fn is_empty(&self) -> bool;
+
     /// `self` must not be empty
     fn to_inclusive(&self) -> Result<RangeInclusive<T>, ()>;
 
@@ -34,13 +35,15 @@ trait IntRangeHelper<T> {
 
     fn equal<Other: RangeBounds<T>>(&self, other: &Other) -> bool;
 
-    /// `self` must has `other`
+    /// `self` must contains_subrange `other`
     /// 
-    /// ``` no_run
+    /// ```
+    /// use int_range::IntRangeHelper;
+    /// 
     /// let r = 0..10;
-    /// let (r1, r2) = r.substract(5..8);
-    /// assert_eq!(r1, 0..=4);
-    /// assert_eq!(r2, 8..=9);
+    /// let (r1, r2) = r.substract(&(5..8)).unwrap();
+    /// assert_eq!(r1, Some(0..=4));
+    /// assert_eq!(r2, Some(8..=9));
     /// ```
     fn substract<Other: RangeBounds<T>>(&self, other: &Other) -> Result<(Option<RangeInclusive<T>>, Option<RangeInclusive<T>>), ()>;
 
@@ -326,32 +329,40 @@ impl<T: Utils, U: RangeBounds<T> > IntRangeHelper<T> for U {
 }
 
 
-
-struct RangeChecker<T> {
+#[derive(Debug)]
+pub struct RangeSub<T> {
     vec: Vec<RangeInclusive<T>>,
 }
 
-impl<T: Copy + Clone + PartialOrd + PartialEq + Ord + Eq + Add<Output = T> + Sub<Output = T> + Utils> RangeChecker<T> {
-    pub fn new(range: &impl IntRangeHelper<T>) -> Result<Self, ()> {
+impl<T: Utils> RangeSub<T> {
+    /// `range` must not be empty
+    pub fn new(range: impl RangeBounds<T>) -> Result<Self, ()> {
         let r = range.to_inclusive()?;
         Ok(Self {vec: vec![r]})
     }
 
-    pub fn substract_(&mut self, other: &(impl IntRangeHelper<T> + RangeBounds<T>)) {
+    pub fn substract_(&mut self, other: &impl RangeBounds<T>) -> Result<(), ()> {
+        let mut ret = Err(());
+
         let mut new_vec = Vec::new();
         for r in self.vec.iter() {
             match r.substract(other) {
-                Ok((Some(r1), Some(r2))) => {
-                    new_vec.push(r1);
-                    new_vec.push(r2);
+                Ok(ok) => {
+                    match ok {
+                        (Some(r1), Some(r2)) => {
+                            new_vec.push(r1);
+                            new_vec.push(r2);
+                        },
+                        (Some(r1), None) => {
+                            new_vec.push(r1);
+                        },
+                        (None, Some(r2)) => {
+                            new_vec.push(r2);
+                        },
+                        (None, None) => {},
+                    }
+                    ret = Ok(());
                 },
-                Ok((Some(r1), None)) => {
-                    new_vec.push(r1);
-                },
-                Ok((None, Some(r2))) => {
-                    new_vec.push(r2);
-                },
-                Ok((None, None)) => {},
                 Err(()) => {
                     new_vec.push(r.clone());
                 },
@@ -359,6 +370,7 @@ impl<T: Copy + Clone + PartialOrd + PartialEq + Ord + Eq + Add<Output = T> + Sub
         }
 
         self.vec = new_vec;
+        ret
     }
 }
 
@@ -396,7 +408,17 @@ mod tests {
     }
 
     #[test]
-    fn contains() {
+    fn to_inclusive() {
+        assert_eq!((..).to_inclusive(), Ok(u8::MIN ..= u8::MAX));
+        assert_eq!((u8::MIN..).to_inclusive(), Ok(u8::MIN ..= u8::MAX));
+        assert_eq!((..u8::MAX).to_inclusive(), Ok(u8::MIN ..= u8::MAX-1));
+        assert_eq!((..=u8::MAX).to_inclusive(), Ok(u8::MIN ..= u8::MAX));
+        assert_eq!((10..20).to_inclusive(), Ok(10 ..= 19));
+        assert_eq!((0..0).to_inclusive(), Err(()));
+    }
+
+    #[test]
+    fn contains_subrange() {
         assert_eq!((u8::MIN..=u8::MAX).contains_subrange(&(..=u8::MAX)), Ok(true));
         assert_eq!((..=u8::MAX).contains_subrange(&(u8::MIN..=u8::MAX)), Ok(true));
         assert_eq!((u8::MIN..=u8::MAX).contains_subrange(&(..)), Ok(true));
@@ -466,6 +488,33 @@ mod tests {
     fn intersect() {
         assert_eq!((0..50).intersect(&(50..100)), Ok(false));
         assert_eq!((0..=50).intersect(&(50..100)), Ok(true));
+    }
+
+    #[test]
+    fn range_sub() {
+        let mut r = RangeSub::new(0..100).unwrap();
+        r.substract_(&(3..5)).unwrap();
+        assert_eq!(r.vec, vec![0..=2, 5..=99]);
+        r.substract_(&(10..20)).unwrap();
+        assert_eq!(r.vec, vec![0..=2, 5..=9, 20..=99]);
+        r.substract_(&(0..2)).unwrap();
+        assert_eq!(r.vec, vec![2..=2, 5..=9, 20..=99]);
+
+        let mut r = RangeSub::new(..100u8).unwrap();
+        r.substract_(&(..5)).unwrap();
+        assert_eq!(r.vec, vec![5..=99]);
+
+        let mut r = RangeSub::new(..100u8).unwrap();
+        r.substract_(&(u8::MIN..5)).unwrap();
+        assert_eq!(r.vec, vec![5..=99]);
+
+        let mut r = RangeSub::new(..).unwrap();
+        r.substract_(&(u8::MIN..5)).unwrap();
+        assert_eq!(r.vec, vec![5..=u8::MAX]);
+
+        let mut r = RangeSub::new(..).unwrap();
+        r.substract_(&(u8::MIN..=255)).unwrap();
+        assert_eq!(r.vec, vec![]);
     }
 
 }
