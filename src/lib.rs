@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use core::fmt::Debug;
 use core::ops::{Add, Bound, RangeBounds, RangeInclusive, Sub};
 
@@ -81,7 +83,7 @@ where
     /// ```
     /// use int_range_ext::IntRangeExt;
     ///
-    /// assert_eq!((0..10).equal(&(0..=9)), true);
+    /// assert!((0..10).equal(&(0..=9)));
     /// ```
     fn equal<Other: RangeBounds<T>>(&self, other: &Other) -> bool;
 
@@ -101,6 +103,15 @@ where
     ) -> Result<(Option<RangeInclusive<T>>, Option<RangeInclusive<T>>), Error>;
 
     /// Both `self` and `other` must not be empty
+    ///
+    /// ```
+    /// use int_range_ext::IntRangeExt;
+    ///
+    /// assert_eq!((0..10).intersect(&(0..=7)), Ok(true));
+    /// assert_eq!((0..10).intersect(&(4..=11)), Ok(true));
+    /// assert_eq!((0..10).intersect(&(10..20)), Ok(false));
+    /// assert!((0..10).intersect(&(10..10)).is_err());
+    /// ```
     fn intersect<Other: RangeBounds<T>>(&self, other: &Other) -> Result<bool, Error>;
 }
 

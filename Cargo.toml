@@ -3,4 +3,12 @@ name = "int-range-ext"
 version = "0.1.0"
 edition = "2021"
 
+authors = ["hangj <guijie.han@gmail.com>"]
+readme = "README.md"
+description = "A trait that implements some convenience methods for integer ranges"
+license = "MIT"
+repository = "https://github.com/hangj/int-range-ext"
+documentation = "https://docs.rs/int-range-ext/"
+exclude = ["/.github/*", "/.gitattributes", "/appveyor.yml", "/Changelog.md", "/clippy.toml", "/codecov.yml"]
+
 [dependencies]
